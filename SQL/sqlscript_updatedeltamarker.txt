@@ -1,0 +1,6 @@
+with cte_deltamarker as (
+    select convert(varchar(51), coalesce(max(modifiedon),'1900-01-01 01:01:01'), 127) + 'Z' deltamarker from dbo.@{item().EntityName}
+)
+update dbo.EntityMetadata set DeltaMarker = T.deltamarker
+from cte_deltamarker T
+where EntityName = '@{item().EntityName}';
