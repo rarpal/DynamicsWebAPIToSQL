@@ -1,0 +1,21 @@
+
+CREATE OR ALTER VIEW OptionSetMetadataView AS
+    SELECT
+    O.EntityName,O.OptionSetName,O.IsUserLocalizedLabel,O1.[Option],
+    O2.LocalizedLabel,O2.LocalizedLabelLanguageCode
+    from dbo.OptionSetMetadata O
+    cross apply openjson(O.OptionSet)
+    with (
+        Options nvarchar(max) '$.Options' as JSON
+    ) O0
+    cross apply openjson(O0.Options)
+    with (
+        [Option] int '$.Value',
+        LocalizedLabels nvarchar(max) '$.Label.LocalizedLabels' as JSON
+    ) O1
+    cross apply openjson(O1.LocalizedLabels)
+    with (
+        LocalizedLabel nvarchar(max) '$.Label',
+        LocalizedLabelLanguageCode int '$.LanguageCode'
+    ) O2
+;
