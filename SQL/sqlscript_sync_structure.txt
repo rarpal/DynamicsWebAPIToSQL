@@ -1,0 +1,108 @@
+declare @entity nvarchar(200) = '@{item().EntityName}';
+declare @pkey nvarchar(255) = '@{item().PrimaryIdAttribute}'
+
+declare @metadata table ([Name] nvarchar(200), datatype NVARCHAR(50), maxLength int, precision int, scale int, datatypeSQL nvarchar(100));
+
+insert into @metadata
+select   
+ x.[Name],  x.dataType ,  x.maxLength,  x.precision,  x.scale,
+    case    
+    when x.dataType = 'nvarchar' and x.maxLength < 0 then 'nvarchar(max)'  
+    when x.datatype = 'nvarchar' and x.maxLength > 0 then 'nvarchar(' + convert(nvarchar(10), x.maxLength) + ')'
+    when x.datatype = 'decimal' then 'decimal(' + convert(nvarchar(10), x.precision) + ',' + convert(nvarchar(10), x.scale)+ ')'  
+    else x.datatype end as datatypeSQL  
+ from ( 
+ select 
+    AttributeName as [Name],
+    case AttributeTypeName
+      when 'StringType' then 'nvarchar'
+      when 'BigIntType' then 'bigint'
+      when 'MoneyType' then 'decimal'
+      when 'BooleanType' then 'bit'
+      when 'DecimalType' then 'decimal'
+      when 'DateTimeType' then 'datetime2'
+      when 'DoubleType' then 'float'
+      when 'IntegerType' then 'int'
+      when 'EntityNameType' then 'nvarchar'
+      when 'StateType' then 'int'
+      when 'StatusType' then 'int'
+      when 'CustomerType' then 'uniqueidentifier'
+      when 'PicklistType' then 'int'
+      when 'MultiSelectPicklistType' then 'nvarchar'
+      when 'UniqueidentifierType' then 'uniqueidentifier'
+      when 'MemoType' then 'nvarchar'
+      when 'LookupType' then 'uniqueidentifier'
+      when 'ManagedPropertyType' then 'nvarchar'
+      when 'OwnerType' then 'uniqueidentifier'
+      when 'VirtualType' then 'nvarchar'
+      when 'PartyListType' then 'nvarchar'
+      when 'ImageType' then 'varbinary'
+      else 'nvarchar' end as datatype,
+    case    
+      when AttributeTypeName = 'StringType' and  MaxLength > 4000 then -1    
+      when AttributeTypeName = 'StringType'  then coalesce(MaxLength,-1) 
+      when AttributeTypeName in ('MultiSelectPicklistType','MemoType','ManagedPropertyType') then -1
+      else -1 end as maxLength,   
+    case  
+      when AttributeTypeName in ('DecimalType','MoneyType') then coalesce(Precision,2) end as scale,   
+    case  
+      when AttributeTypeName in ('DecimalType','MoneyType') then 38 end as precision
+    from dbo.AttributeMetadata
+    where ((AttributeTypeName not in ('VirtualType','PartyListType','ImageType','EntityNameType') and IsValidForAdvancedFind = 1) or IsPrimaryId = 1)
+      and EntityName in (@entity) and InUse = 1
+ ) x
+
+   -- Create table
+Declare @CreateTableDDL nvarchar(max) = (SELECT 
+'IF OBJECT_ID(''dbo.' + @entity + ''',''U'') IS NULL 
+create table ' + @entity + '(' + STRING_AGG(CONVERT(NVARCHAR(max), + '[' + name + '] ' +  datatypeSQL) , ',') + ' 
+, CONSTRAINT ' + @entity + '_ID PRIMARY KEY CLUSTERED (' + @pkey + ')' + ')' 
+from @metadata);
+
+execute sp_executesql  @CreateTableDDL;
+ --select @CreateTableDDL
+
+
+   -- Add columns
+Declare @AlterTableAddColumnDDL nvarchar(max) = (SELECT 
+'alter table ' + @entity + ' ADD ' + STRING_AGG(CONVERT(NVARCHAR(max), + '[' + name + '] ' +  datatypeSQL), ',')
+from @metadata m
+left join  INFORMATION_SCHEMA.COLUMNS c on 
+c.TABLE_NAME = @entity and TABLE_SCHEMA = 'dbo'
+and c.COLUMN_NAME = m.Name
+where c.COLUMN_NAME is null);
+
+execute sp_executesql @AlterTableAddColumnDDL;
+--select @AlterTableAddColumnDDL;
+
+
+   -- Alter columns
+Declare @AlterTableAlterColumnDDL nvarchar(max) = (SELECT 
+  STRING_AGG(CONVERT(NVARCHAR(max), + 'alter table ' + @entity + ' ALTER COLUMN ' + '[' + name + '] ' +  datatypeSQL), ';')
+from @metadata m
+left join  INFORMATION_SCHEMA.COLUMNS c on 
+c.TABLE_NAME = @entity and TABLE_SCHEMA = 'dbo'
+and c.COLUMN_NAME = name
+where c.COLUMN_NAME is not null and (c.Data_type != datatype));
+--where c.COLUMN_NAME is not null and (c.Data_type != datatype or c.CHARACTER_MAXIMUM_LENGTH != maxLength or NUMERIC_PRECISION != precision or NUMERIC_SCALE != scale));
+
+execute sp_executesql @AlterTableAlterColumnDDL;
+--select @AlterTableAlterColumnDDL;
+
+   -- Create DeleteLog table
+Declare @CreateLogTableDDL nvarchar(max) =
+'IF OBJECT_ID(''dbo.DeleteLog'',''U'') IS NULL 
+CREATE TABLE [dbo].[DeleteLog](
+	[Id] [bigint] IDENTITY(1,1) NOT NULL,
+	[EntityName] [nvarchar](64) NOT NULL,
+	[RecordId] [nvarchar](64) NOT NULL,
+	[SinkDeleteTime] [datetime] NOT NULL,
+	[VersionNumber] [bigint] NOT NULL,
+PRIMARY KEY CLUSTERED 
+(
+	[Id] ASC
+)
+) ON [PRIMARY]';
+
+execute sp_executesql  @CreateLogTableDDL;
+--select @CreateLogTableDDL;
