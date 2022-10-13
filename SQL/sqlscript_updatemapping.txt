@@ -1,0 +1,39 @@
+UPDATE dbo.AttributeMetadata SET
+Mapping = '{"source":{"path":"[''' + 
+    case when AttributeTypeName in ('LookupType','CustomerType','OwnerType') then CONCAT('_',AttributeName,'_value') else AttributeName end + ''']"},"sink":{"name":"' + AttributeName + '","type":"' + 
+    case when AttributeTypeName = 'BigIntType' then 'Int64' 
+    when AttributeTypeName = 'MoneyType' then 'Decimal'
+    when AttributeTypeName = 'IntegerType' then 'Int32'
+    when AttributeTypeName = 'EntityNameType' then 'String'
+    when AttributeTypeName = 'StateType' then 'Int32'
+    when AttributeTypeName = 'StatusType' then 'Int32'
+    when AttributeTypeName = 'CustomerType' then 'Guid'
+    when AttributeTypeName = 'PicklistType' then 'Int32'
+    when AttributeTypeName = 'MultiSelectPicklistType' then 'String'
+    when AttributeTypeName = 'UniqueidentifierType' then 'Guid'
+    when AttributeTypeName = 'MemoType' then 'String'
+    when AttributeTypeName = 'LookupType' then 'Guid'
+    when AttributeTypeName = 'ManagedPropertyType' then 'String'
+    when AttributeTypeName = 'OwnerType' then 'Guid'
+    when AttributeTypeName = 'VirtualType' then 'String'
+    when AttributeTypeName = 'PartyListType' then 'String'
+    else left(AttributeTypeName, len(AttributeTypeName)-4) end + '"}}';
+
+UPDATE dbo.AttributeMetadata SET
+    InUse = 0 
+WHERE AttributeName = 'documentbody' and EntityName = 'annotation';
+
+UPDATE dbo.EntityMetadata SET
+    DeltaMarkerAttribute = 'modifiedon',
+    DeltaMarker = '2022-08-01T01:01:00.000Z'
+WHERE EntityName NOT IN ('teammembership');
+
+UPDATE dbo.EntityMetadata SET
+    IsDeltaLoad = 0
+WHERE EntityName IN ('usersettings');
+
+UPDATE dbo.EntityMetadata SET
+    DeltaMarkerAttribute = 'versionnumber',
+    DeltaMarker = '0',
+    IsDeltaLoad = 0
+WHERE EntityName IN ('teammembership');
